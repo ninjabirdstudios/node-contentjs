@@ -1,29 +1,9 @@
-node-contentjs
-==============
+copydc
+======
 
-A streamlined, minimalistic game content pipeline built on Node.js. The library
-and tools can be set up to monitor multiple source directory trees for changes,
-and on command, execute data compilers for each modified file. The intent is to
-provide rapid iteration for game content while minimizing errors that might
-result from manually running a series of separate tools.
-
-TODOs
------
-
-The following items remain TBD or fixed:
-
- * Need to properly store relative path information when saving out a source
-   or target database.
- * Need to restore absolute path information when loading a source or target
-   database.
- * In the target database, source file paths are made relative using the wrong
-   root path (it uses the target root path instead of the source root path.)
- * Lots of cleanup; many things feel a bit hacky.
- * Need to output the bundle manifest file with metadata.
- * Need to implement a sample data compiler that does something more than just
-   copy the input file to the target directory.
- * Need to take a look at the code required to implement a data compiler. It
-   seems more of a PITA than it should be.
+Implements a simple skeleton data compiler that copies the source file to the
+target directory without performing any additional processing. This data
+compiler can be used as a template for other more complex data compilers.
 
 License
 -------

@@ -1,12 +1,12 @@
 {
-  "name"         : "node-contentjs",
+  "name"         : "copydc",
   "noAnalyze"    : false,
   "preferGlobal" : false,
-  "main"         : "index.js",
+  "main"         : "bin/copydc.js",
   "version"      : "1.0.0",
   "license"      : "Public Domain",
   "author"       : "Russell Klenk <russ@ninjabirdstudios.com>",
-  "description"  : "Game content pipeline for node.js",
+  "description"  : "File copy data compiler",
   "homepage"     : "https://github.com/ninjabirdstudios/node-contentjs",
   "bugs"         : "https://github.com/ninjabirdstudios/node-contentjs/issues",
   "contributors" : [
@@ -28,7 +28,10 @@
     "content",
     "pipeline",
     "game",
-    "tool"
+    "tool",
+    "content-js",
+    "compiler",
+    "data compiler"
   ],
   "dependencies" : {
     "commander"  : ">=1.0.x"
