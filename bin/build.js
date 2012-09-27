@@ -10,25 +10,33 @@ var Path        = require('path');
 var Commander   = require('commander');
 var ContentJS   = require('../index');
 
-/// Constants and global values used throughout the application module.
-var application = {
-    /// The name of the application module.
-    NAME              : 'contentjs-build',
-    /// The path from which the application was started.
-    STARTUP_DIRECTORY : process.cwd(),
-    /// An object defining the pre-digested command-line arguments passed to
-    /// the application, not including the node or script name values.
-    args              : {}
-};
-
 /// Constants representing the various application exit codes.
 var exit_code   = {
     /// The program has exited successfully.
     SUCCESS     : 0,
     /// The program has exited with an unknown error.
-    ERROR       : 1,
-    /// The program has exited because the specified project does not exist.
-    NO_PROJECT  : 2
+    ERROR       : 1
+};
+
+/// Constants and global values used throughout the application module.
+var application = {
+    /// The name of the application module.
+    NAME              : 'build',
+    /// The path from which the application was started.
+    STARTUP_DIRECTORY : process.cwd(),
+    /// An object defining the pre-digested command-line arguments passed to
+    /// the application, not including the node or script name values.
+    args              : {},
+    /// The path of the project being built, as specified on the command-line.
+    projectPath       : '',
+    /// The name of the target platform, as specified on the command-line.
+    targetPlatform    : '',
+    /// The ProjectBuilder that manages the content pipeline processes.
+    projectBuilder    : null,
+    /// The application exit code.
+    exitCode          : exit_code.SUCCESS,
+    /// The number of content packages remaining to build.
+    remaining         : 0
 };
 
 /// Exits the application with an error.
@@ -42,160 +50,207 @@ function programError(exitCode, data)
         switch (exitCode)
         {
             case exit_code.ERROR:
-                console.error('An unknown error occurred:');
+                console.error('An error occurred:');
                 console.error('  '+data);
-                break;
-
-            case exit_code.NO_PROJECT:
-                console.error('The project could not be found:');
-                console.error('  Path: '+data);
                 break;
         }
     }
     process.exit(exitCode);
 }
 
-/// Callback invoked when the 'project:complete' event is emitted.
-/// @param builder The Builder instance that raised the event.
-/// @param project The Project being built.
-function projectBuildComplete(builder, project)
+/// Callback invoked when the ProjectBuilder emits the 'ready' event to
+/// indicate that the content pipeline is available and builds can begin.
+/// @param builder The ProjectBuilder instance that raised the event.
+function projectBuilderReady(builder)
 {
-    console.log('Project build has completed.');
+    var packages = builder.enumeratePackages();
+    application.remaining = packages.length;
+    for (var i   = 0,   n = packages.length; i < n; ++i)
+    {
+        var packageBuild  = builder.createPackageBuilder(packages[i]);
+        packageBuild.on('start',   packageBuildStarted);
+        packageBuild.on('finish',  packageBuildFinished);
+        packageBuild.on('compile', compileStarted);
+        packageBuild.on('success', compileSucceeded);
+        packageBuild.on('error',   compileError);
+        packageBuild.on('ignore',  sourceFileIgnored);
+        packageBuild.buildTarget(application.targetPlatform);
+    }
 }
 
-/// Callack invoked when the 'package:started' event is emitted.
-/// @param builder The Builder instance that raised the event.
-/// @param info An object describing the build that was started.
-/// @param info.projectName The name of the content project to which the
-/// content package belongs.
+/// Callback invoked when the ProjectBuilder emits the 'disposed' event to
+/// indicate that all content pipeline processes have been terminated.
+/// @param builder The ProjectBuilder instance that raised the event.
+function projectBuilderDisposed(builder)
+{
+    process.exit(application.exitCode);
+}
+
+/// Callback invoked when the PackageBuilder emits the 'start' event to
+/// indicate that the build process has started for a content package.
+/// @param builder The PackageBuilder instance that raised the event.
+/// @param info Additional information related to the event.
+/// @param info.projectName The name of the project the package belongs to.
 /// @param info.packageName The name of the content package.
-/// @param info.sourcePath The absolute path of the package source content.
-/// @param info.targetPath The absolute path of the package target resources.
-/// @param info.platform The name of the target platform.
+/// @param info.targetName The name of the target platform.
 function packageBuildStarted(builder, info)
 {
-    console.log('Starting build for package '+info.packageName+'...');
-}
-
-/// Callback invoked when the 'package:complete' event is emitted.
-/// @param builder The Builder instance that raised the event.
-/// @param info An object describing the build that completed.
-/// @param info.projectName The name of the content project to which the
-/// content package belongs.
-/// @param info.packageName The name of the content package.
-/// @param info.sourcePath The absolute path of the package source content.
-/// @param info.targetPath The absolute path of the package target resources.
-/// @param info.platform The name of the target platform.
-/// @param info.errorCount The number of errors encountered while building the
-/// content package.
-function packageBuildComplete(builder, info)
-{
-    console.log('Completed build for package '+info.packageName+'.');
-}
-
-/// Callback invoked when the 'file:started' event is emitted.
-/// @param builder The Builder instance that raised the event.
-/// @param info An object describing the build that was started.
-/// @param info.projectName The name of the content project to which the
-/// content package belongs.
-/// @param info.packageName The name of the content package.
-/// @param info.sourcePath The absolute path of the source content file.
-/// @param info.targetPath The absolute path of the target resource.
-/// @param info.compilerName The name of the data compiler building the file.
-function fileBuildStarted(builder, info)
-{
-    console.log('Started build for file '+info.sourcePath+'...');
-}
-
-/// Callback invoked when the 'file:skipped' event is emitted.
-/// @param builder The Builder instance that raised the event.
-/// @param info An object describing the build that was started.
-/// @param info.projectName The name of the content project to which the
-/// content package belongs.
-/// @param info.packageName The name of the content package.
-/// @param info.sourcePath The absolute path of the source content file.
-/// @param info.targetPath The absolute path of the target resource.
-/// @param info.reason A string specifying the reason the file was skipped.
-function fileBuildSkipped(builder, info)
-{
-    console.log('Skipped build of file '+info.sourcePath+':');
-    console.log('  Reason: '+info.reason);
-}
-
-/// Callback invoked when the 'file:success' event is emitted.
-/// @param builder The Builder instance that raised the event.
-/// @param info An object describing the build that was started.
-/// @param info.projectName The name of the content project to which the
-/// content package belongs.
-/// @param info.packageName The name of the content package.
-/// @param info.sourcePath The absolute path of the source content file.
-/// @param info.targetPath The absolute path of the target resource.
-/// @param info.compilerName The name of the data compiler building the file.
-/// @param info.outputs An array of absolute paths of the build output files.
-function fileBuildSuccess(builder, info)
-{
-    console.log('Successfully built file '+info.sourcePath+'.');
-}
-
-/// Callback invoked when the 'file:error' event is emitted.
-/// @param builder The Builder instance that raised the event.
-/// @param info An object describing the build that was started.
-/// @param info.projectName The name of the content project to which the
-/// content package belongs.
-/// @param info.packageName The name of the content package.
-/// @param info.sourcePath The absolute path of the source content file.
-/// @param info.targetPath The absolute path of the target resource.
-/// @param info.compilerName The name of the data compiler building the file.
-/// @param info.errors An array of string error messages.
-function fileBuildError(builder, info)
-{
-    console.log('Build of file '+info.sourcePath+' encountered errors:');
-    for (var i = 0, n = info.errors.length; i < n; ++i)
+    if (!application.args.silent)
     {
-        console.log('  Error: '+errors[i]);
+        console.log('Starting build for content package:');
+        console.log('  Project: '+info.projectName);
+        console.log('  Package: '+info.packageName);
+        console.log('  Target:  '+info.targetName);
+        console.log();
     }
 }
 
-/// Loads a project from disk.
-/// @param rootPath The project root directory.
-/// @return The Project instance for the specified path.
-function loadProject(rootPath)
+/// Callback invoked when the PackageBuilder emits the 'finish' event to
+/// indicate that the build process has started for a content package.
+/// @param builder The PackageBuilder instance that raised the event.
+/// @param info Additional information related to the event.
+/// @param info.projectName The name of the project the package belongs to.
+/// @param info.packageName The name of the content package.
+/// @param info.targetName The name of the target platform.
+/// @param info.successCount The number of source files compiled successfully.
+/// @param info.skippedCount The number of source files skipped.
+/// @param info.errorCount The number of source files that encountered errors.
+/// @param info.success true if the build was successful; false otherwise.
+function packageBuildFinished(builder, info)
 {
-    var resolved = Path.resolve(rootPath || process.cwd());
-    var rootDir  = Path.dirname(resolved);
-    var projName = Path.basename(resolved);
-
-    // the project must exist, and must specify a directory.
-    if (!Filesystem.existsSync(resolved))
+    if (info.success)
     {
-        programError(exit_code.NO_PROJECT, resolved);
+        if (!application.args.silent)
+        {
+            console.log('PACKAGE BUILD SUCCEEDED:');
+            console.log('  Package:   '+info.packageName);
+            console.log('  Ignored:   '+info.skippedCount);
+            console.log('  Succeeded: '+info.successCount);
+            console.log('  Failed:    '+info.errorCount);
+            console.log();
+        }
     }
-    if (!Filesystem.statSync(resolved).isDirectory())
+    else
     {
-        programError(exit_code.NO_PROJECT, resolved);
+        if (!application.args.silent)
+        {
+            console.error('PACKAGE BUILD FAILED:');
+            console.error('  Package:   '+info.packageName);
+            console.error('  Ignored:   '+info.skippedCount);
+            console.error('  Succeeded: '+info.successCount);
+            console.error('  Failed:    '+info.errorCount);
+            console.error();
+        }
+        // one or more packages failed to build.
+        application.exitCode  = exit_code.ERROR;
     }
-    console.log('Loading project: ');
-    console.log('  From: '+rootDir);
-    console.log('  Name: '+projName);
-    return ContentJS.createProject(projName, rootDir).cachePackages();
+    if (application.remaining === 1)
+    {
+        // this was the final content package. we're done.
+        application.remaining--;
+        application.projectBuilder.dispose();
+    }
+    else
+    {
+        // there are additional packages still building.
+        application.remaining--;
+    }
 }
 
-/// Builds a content project.
-/// @param project The Project instance for the content project to build.
-/// @param platform The name of the target platform.
-/// @return The Builder instance used to manage the project build process.
-function buildProject(project, platform)
+/// Callback invoked when a source file is submitted to a data compiler.
+/// @param builder The PackageBuilder instance that raised the event.
+/// @param info Additional information related to the event.
+/// @param info.projectName The name of the project the package belongs to.
+/// @param info.packageName The name of the content package.
+/// @param info.targetName The name of the target platform.
+/// @param info.sourcePath The absolute path of the source file.
+/// @param info.targetPath The absolute path of the target resource.
+/// @param info.compilerName The name of the data compiler.
+function compileStarted(builder, info)
 {
-    var builder = ContentJS.createBuilder();
-    builder.on('project:complete', projectBuildComplete);
-    builder.on('package:started',  packageBuildStarted);
-    builder.on('package:complete', packageBuildComplete);
-    builder.on('file:started',     fileBuildStarted);
-    builder.on('file:skipped',     fileBuildSkipped);
-    builder.on('file:success',     fileBuildSuccess);
-    builder.on('file:error',       fileBuildError);
-    builder.buildProject(project, platform || '');
-    return builder;
+    if (!application.args.silent)
+    {
+        console.log('Starting rebuild for source file:');
+        console.log('  Package:  '+info.packageName);
+        console.log('  Source:   '+info.sourcePath);
+        console.log('  Target:   '+info.targetPath);
+        console.log('  Compiler: '+info.compilerName);
+        console.log();
+    }
+}
+
+/// Callback invoked when a source file is recompiled successfully.
+/// @param builder The PackageBuilder instance that raised the event.
+/// @param info Additional information related to the event.
+/// @param info.projectName The name of the project the package belongs to.
+/// @param info.packageName The name of the content package.
+/// @param info.targetName The name of the target platform.
+/// @param info.sourcePath The absolute path of the source file.
+/// @param info.targetPath The absolute path of the target resource.
+/// @param info.compilerName The name of the data compiler.
+/// @param info.outputFiles An array of absolute paths specifying the outputs.
+function compileSucceeded(builder, info)
+{
+    if (!application.args.silent)
+    {
+        console.log('Successfully compiled source file:');
+        console.log('  Package:   '+info.packageName);
+        console.log('  Source:    '+info.sourcePath);
+        console.log('  Target:    '+info.targetPath);
+        console.log('  Compiler:  '+info.compilerName);
+        console.log('  Output(s): ');
+        for (var i = 0, n = info.outputFiles.length; i < n; ++i)
+            console.log('    '+info.outputFiles[i]);
+        console.log();
+    }
+}
+
+/// Callback invoked when a data compiler returned errors dueing a recompile.
+/// @param builder The PackageBuilder instance that raised the event.
+/// @param info Additional information related to the event.
+/// @param info.projectName The name of the project the package belongs to.
+/// @param info.packageName The name of the content package.
+/// @param info.targetName The name of the target platform.
+/// @param info.sourcePath The absolute path of the source file.
+/// @param info.targetPath The absolute path of the target resource.
+/// @param info.compilerName The name of the data compiler.
+/// @param info.errors An array of error messages.
+function compileError(builder, info)
+{
+    if (!application.args.silent)
+    {
+        console.error('Error(s) while compiling file:');
+        console.error('  Package:  '+info.packageName);
+        console.error('  Source:   '+info.sourcePath);
+        console.error('  Target:   '+info.targetPath);
+        console.error('  Compiler: '+info.compilerName);
+        console.error('  Error(s): ');
+        for (var i = 0, n = info.errors.length; i < n; ++i)
+            console.error('    '+info.errors[i]);
+        console.error();
+    }
+}
+
+/// Callback invoked when a source file is ignored (not recompiled).
+/// @param builder The PackageBuilder instance that raised the event.
+/// @param info Additional information related to the event.
+/// @param info.projectName The name of the project the package belongs to.
+/// @param info.packageName The name of the content package.
+/// @param info.targetName The name of the target platform.
+/// @param info.sourcePath The absolute path of the source file.
+/// @param info.targetPath The absolute path of the target resource.
+/// @param info.reason A string specifying the reason the file was ignored.
+function sourceFileIgnored(builder, info)
+{
+    if (!application.args.silent)
+    {
+        console.log('Ignored source file:');
+        console.log('  Package: '+info.packageName);
+        console.log('  Source:  '+info.sourcePath);
+        console.log('  Target:  '+info.targetPath);
+        console.log('  Reason:  '+info.reason);
+        console.log();
+    }
 }
 
 /// Processes any options specified on the command line. If necessary, help
@@ -208,29 +263,33 @@ function processCommandLine()
     // line is invalid, commander will call process.exit() for us.
     Commander
         .version('1.0.0')
-        .option('-s, --silent',  'Run in silent mode (no console output).', Boolean, false)
-        .option('-p, --project [path]', 'Specify the path of the project to build.', String)
+        .option('-s, --silent',         'Suppress command-line output.')
+        .option('-p, --project [path]', 'Path of the project to build.', String)
+        .option('-t, --target [name]',  'Name of the target platform.',  String, '')
         .parse(process.argv);
 
     // return an object containing our final configuration options:
     return {
         silent      : Commander.silent,
-        projectRoot : Commander.project
+        projectRoot : Commander.project,
+        targetName  : Commander.target
     };
 }
 
-///
-function programExecute()
-{
-    var project = loadProject(application.args.projectRoot);
-    var builder = buildProject(project);
-}
-
-/// Implements the entry point of the application.
+/// Implements the entry point of the application. Command-line arguments are
+/// parsed, and if necessary help information is displayed and the program
+/// exits. The project is then loaded and the build process started.
 function main()
 {
-    application.args = processCommandLine();
-    programExecute();
+    application.args            = processCommandLine();
+    application.exitCode        = exit_code.SUCCESS;
+    application.remaining       = 0;
+    application.projectPath     = application.args.projectRoot;
+    application.targetPlatform  = application.args.targetName;
+    application.projectBuilder  = ContentJS.createBuilder();
+    application.projectBuilder.on('ready',    projectBuilderReady);
+    application.projectBuilder.on('disposed', projectBuilderDisposed);
+    application.projectBuilder.loadProject(application.projectPath);
 }
 
 /// Application entry point.
