@@ -16,6 +16,7 @@ module.exports.readTree                      = FSUtility.readTree;
 module.exports.makeTree                      = FSUtility.makeTree;
 module.exports.isFile                        = FSUtility.isFile;
 module.exports.isDirectory                   = FSUtility.isDirectory;
+module.exports.makeTar                       = FSUtility.makeTar;
 module.exports.ensurePathSeparator           = FSUtility.ensurePathSeparator;
 module.exports.removePathSeparator           = FSUtility.removePathSeparator;
 
