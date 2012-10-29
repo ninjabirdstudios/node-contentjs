@@ -266,7 +266,7 @@ function createEmptyProjectManifest()
         latest       : {
             version  : 1,
             builtOn  : new Date(),
-            packages : {} // map platform name to array of Hash.package
+            packages : {} // map platform name to array of {name,Hash.package}
         }
     };
 }
@@ -310,8 +310,12 @@ function projectManifestChanged(manifestOld, manifestNew)
         {
             // @note: the arrays of package files are sorted,
             // so we expect platformOld[i] === platformNew[i].
-            if (platformOld[i] !== platformNew[i])
-                return true;
+            var packOld        = platformOld[i];
+            var packNew        = platformNew[i];
+            if (packOld.name !== packNew.name)
+                return true;  // package names differ
+            if (packOld.file !== packNew.file)
+                return true;  // package hashes differ
         }
     }
     return false;
@@ -456,7 +460,10 @@ function publishTarget(project, bundle, target, manifest)
 
     // update the project manifest file.
     var pkgList  = (manifest.latest.packages[platform] || []);
-    pkgList.push(pkgName);
+    pkgList.push({
+        name     :  bundle.packageName,
+        file     :  pkgName
+    });
     manifest.latest.packages[platform] = pkgList;
 }
 
@@ -493,10 +500,13 @@ function publishProject(project)
         publishPackage(project, bundle, manifest);
     }
 
-    // sort the package lists by filename for easier comparison.
+    // sort the package lists by package name for easier comparison.
     Object.keys(manifest.latest.packages).forEach(function (platform)
         {
-            manifest.latest.packages[platform].sort();
+            manifest.latest.packages[platform].sort(function (a, b)
+                {
+                    return String.localeCompare(a.name, b.name);
+                });
         });
 
     // load any previously existing project manifest and compare
