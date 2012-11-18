@@ -36,6 +36,12 @@ build-Debug
 build-Release
 projects/*/
 
+# Other directories #
+#####################
+samples/
+testproject/
+web/
+
 # OS generated files #
 ######################
 .DS_Store
