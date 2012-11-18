@@ -14,16 +14,6 @@ The following items remain TBD or fixed:
 
  * Need to implement a sample data compiler that does something more than just
    copy the input file to the target directory.
- * Need to take a look at the code required to implement a data compiler. It
-   seems more of a PITA than it should be. Should probably factor this out into
-   a node-datacompiler project/repository and have the implementor just inherit
-   from the DataCompiler class, which has hooked all process events, implements
-   the IPC code, and provides methods for raising errors, setting outputs, etc.
- * Need to implement the archive tool to tar a target bundle.
- * Need to implement the publish tool to tar all target bundles and output a
-   project manifest file. The tar files should have a crypto hash as their name
-   and the project manifest should contain the project name, build date, and a
-   list of package archive files.
  * Need to implement the clean tool to delete all target packages.
 
 License
