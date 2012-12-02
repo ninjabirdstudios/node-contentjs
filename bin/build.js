@@ -58,6 +58,27 @@ function programError(exitCode, data)
     process.exit(exitCode);
 }
 
+/// Callback invoked when the ProjectBuilder emits the 'error' event to
+/// indicate that an error occurred while spawning data compiler processes.
+/// @param builder The ProjectBuilder instance that raised the event.
+/// @param info An object specifying additional information about the error.
+/// @param info.resourceType A string specifying the resource type whose
+/// compiler failed to start.
+/// @param info.scriptPath The absolute path of the data compiler script.
+/// @param info.error An Error instance specifying additional information.
+function projectBuilderError(builder, info)
+{
+    if (!application.args.silent)
+    {
+        console.error('ERROR SPAWNING DATA COMPILER PROCESS:');
+        console.error('  Type:  '+info.resourceType);
+        console.error('  Path:  '+info.scriptPath);
+        console.error('  Error: '+info.error);
+        console.error();
+    }
+    process.exit(exit_code.ERROR);
+}
+
 /// Callback invoked when the ProjectBuilder emits the 'ready' event to
 /// indicate that the content pipeline is available and builds can begin.
 /// @param builder The ProjectBuilder instance that raised the event.
@@ -287,6 +308,7 @@ function main()
     application.projectPath     = application.args.projectRoot;
     application.targetPlatform  = application.args.targetName;
     application.projectBuilder  = ContentJS.createBuilder();
+    application.projectBuilder.on('error',    projectBuilderError);
     application.projectBuilder.on('ready',    projectBuilderReady);
     application.projectBuilder.on('disposed', projectBuilderDisposed);
     application.projectBuilder.loadProject(application.projectPath);
